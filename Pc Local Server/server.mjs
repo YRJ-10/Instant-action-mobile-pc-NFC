@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { hostname, networkInterfaces, platform, homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -113,9 +113,18 @@ async function setClipboard(text) {
     throw new Error("Clipboard write is only implemented for Windows right now.");
   }
 
-  await run("powershell", ["-NoProfile", "-Command", "Set-Clipboard -Value $input"], {
-    input: String(text),
-    windowsHide: true
+  await new Promise((resolveClipboard, reject) => {
+    const child = spawn(
+      "powershell",
+      ["-NoProfile", "-Command", "Set-Clipboard -Value $input"],
+      { windowsHide: true }
+    );
+    child.stdin.end(String(text));
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      if (code === 0) resolveClipboard();
+      else reject(new Error(`Set-Clipboard exited with code ${code}`));
+    });
   });
 }
 
