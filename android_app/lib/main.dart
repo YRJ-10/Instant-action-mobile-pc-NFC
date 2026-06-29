@@ -500,7 +500,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: _busy ? null : _findPc,
-                      icon: const Icon(Icons.search),
+                      icon: const Icon(Icons.travel_explore),
                       label: const Text('Find PC'),
                     ),
                   ),
@@ -556,9 +556,14 @@ class _HomeScreenState extends State<HomeScreen> {
         title: const Text('Instant Action'),
         actions: [
           IconButton(
-            tooltip: 'Find PC',
+            tooltip: 'Find PC on network',
             onPressed: _busy ? null : _findPc,
-            icon: const Icon(Icons.search),
+            style: IconButton.styleFrom(
+              backgroundColor: const Color(0xFF0F2F31),
+              foregroundColor: const Color(0xFF2DD4BF),
+              disabledBackgroundColor: const Color(0xFF252B34),
+            ),
+            icon: const Icon(Icons.travel_explore),
           ),
           IconButton(
             tooltip: 'Save config',
