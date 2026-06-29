@@ -101,6 +101,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _textController = TextEditingController(text: 'hello from android');
 
   bool _busy = false;
+  int _tabIndex = 0;
   String _status = 'Ready';
   String _deviceId = '';
   String _deviceToken = '';
@@ -344,6 +345,210 @@ class _HomeScreenState extends State<HomeScreen> {
     if (_deviceId.isEmpty) _deviceId = _newDeviceId();
   }
 
+  bool get _isTrusted => _deviceToken.isNotEmpty;
+
+  bool get _hasPc => _pcId.isNotEmpty;
+
+  String get _contextType {
+    final url = _urlController.text.trim();
+    final text = _textController.text.trim();
+    if (url.startsWith('http://') || url.startsWith('https://')) return 'URL';
+    if (text.isNotEmpty) return 'Clipboard';
+    return 'None';
+  }
+
+  String get _contextValue {
+    final url = _urlController.text.trim();
+    final text = _textController.text.trim();
+    if (url.startsWith('http://') || url.startsWith('https://')) return url;
+    if (text.isNotEmpty) return text;
+    return 'No context selected';
+  }
+
+  Widget _buildTab() {
+    return switch (_tabIndex) {
+      0 => _buildActionTab(),
+      1 => _buildConnectionTab(),
+      _ => _buildSettingsTab(),
+    };
+  }
+
+  Widget _buildActionTab() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _HeroPanel(
+          busy: _busy,
+          trusted: _isTrusted,
+          connected: _hasPc,
+          status: _status,
+          onRun: _simulateTap,
+        ),
+        const SizedBox(height: 16),
+        _SectionCard(
+          title: 'Current Context',
+          trailing: _ContextBadge(label: _contextType),
+          child: Text(
+            _contextValue,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodyLarge,
+          ),
+        ),
+        const SizedBox(height: 16),
+        _SectionCard(
+          title: 'Manual Context',
+          child: Column(
+            children: [
+              TextField(
+                controller: _urlController,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(
+                  labelText: 'URL',
+                  prefixIcon: Icon(Icons.link),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _textController,
+                minLines: 3,
+                maxLines: 5,
+                decoration: const InputDecoration(
+                  labelText: 'Clipboard Text',
+                  prefixIcon: Icon(Icons.content_paste),
+                ),
+                onChanged: (_) => setState(() {}),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: _busy ? null : _sendUrl,
+                      icon: const Icon(Icons.open_in_browser),
+                      label: const Text('Send URL'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: _busy ? null : _sendClipboard,
+                      icon: const Icon(Icons.content_copy),
+                      label: const Text('Clipboard'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildConnectionTab() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _StatusPanel(status: _status, busy: _busy),
+        const SizedBox(height: 16),
+        _SectionCard(
+          title: 'Connection Setup',
+          child: Column(
+            children: [
+              TextField(
+                controller: _baseUrlController,
+                keyboardType: TextInputType.url,
+                decoration: const InputDecoration(
+                  labelText: 'PC Address',
+                  prefixIcon: Icon(Icons.computer),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _pairingTokenController,
+                obscureText: true,
+                decoration: const InputDecoration(
+                  labelText: 'Pairing Code',
+                  prefixIcon: Icon(Icons.key),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.icon(
+                      onPressed: _busy ? null : _testHealth,
+                      icon: const Icon(Icons.check_circle),
+                      label: const Text('Test PC'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: _busy ? null : _registerDevice,
+                      icon: const Icon(Icons.verified_user),
+                      label: const Text('Trust Phone'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _busy ? null : _findPc,
+                      icon: const Icon(Icons.search),
+                      label: const Text('Find PC'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: _busy ? null : () => _saveConfig(),
+                      icon: const Icon(Icons.save),
+                      label: const Text('Save'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSettingsTab() {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        _SectionCard(
+          title: 'This Phone',
+          child: Column(
+            children: [
+              _InfoRow(label: 'Name', value: _deviceName),
+              _InfoRow(label: 'Trusted', value: _isTrusted ? 'Yes' : 'No'),
+              _InfoRow(label: 'Device ID', value: _deviceId),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _SectionCard(
+          title: 'Paired PC',
+          child: Column(
+            children: [
+              _InfoRow(label: 'Address', value: _normalizedBaseUrl()),
+              _InfoRow(label: 'PC ID', value: _pcId.isEmpty ? '-' : _pcId),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -357,101 +562,239 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           IconButton(
             tooltip: 'Save config',
-            onPressed: _busy ? null : _saveConfig,
+            onPressed: _busy ? null : () => _saveConfig(),
             icon: const Icon(Icons.save),
           ),
         ],
       ),
       body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            _StatusPanel(status: _status, busy: _busy),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _baseUrlController,
-              keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
-                labelText: 'PC server URL',
-                prefixIcon: Icon(Icons.computer),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _pairingTokenController,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Pairing token',
-                prefixIcon: Icon(Icons.key),
-              ),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.icon(
-                    onPressed: _busy ? null : _testHealth,
-                    icon: const Icon(Icons.check_circle),
-                    label: const Text('Test PC'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: _busy ? null : _registerDevice,
-                    icon: const Icon(Icons.verified_user),
-                    label: const Text('Register'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            TextField(
-              controller: _urlController,
-              keyboardType: TextInputType.url,
-              decoration: const InputDecoration(
-                labelText: 'URL context',
-                prefixIcon: Icon(Icons.link),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: _textController,
-              minLines: 3,
-              maxLines: 5,
-              decoration: const InputDecoration(
-                labelText: 'Clipboard text',
-                prefixIcon: Icon(Icons.content_paste),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: _busy ? null : _sendUrl,
-                    icon: const Icon(Icons.open_in_browser),
-                    label: const Text('Send URL'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: FilledButton.tonalIcon(
-                    onPressed: _busy ? null : _sendClipboard,
-                    icon: const Icon(Icons.content_copy),
-                    label: const Text('Clipboard'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: _busy ? null : _simulateTap,
-              icon: const Icon(Icons.nfc),
-              label: const Text('Simulate Tap'),
-            ),
-          ],
+        child: AnimatedSwitcher(
+          duration: const Duration(milliseconds: 180),
+          child: KeyedSubtree(
+            key: ValueKey(_tabIndex),
+            child: _buildTab(),
+          ),
         ),
+      ),
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _tabIndex,
+        onDestinationSelected: (index) => setState(() => _tabIndex = index),
+        destinations: const [
+          NavigationDestination(icon: Icon(Icons.nfc), label: 'Action'),
+          NavigationDestination(icon: Icon(Icons.lan), label: 'Connection'),
+          NavigationDestination(icon: Icon(Icons.tune), label: 'Settings'),
+        ],
+      ),
+    );
+  }
+}
+
+class _HeroPanel extends StatelessWidget {
+  const _HeroPanel({
+    required this.busy,
+    required this.trusted,
+    required this.connected,
+    required this.status,
+    required this.onRun,
+  });
+
+  final bool busy;
+  final bool trusted;
+  final bool connected;
+  final String status;
+  final VoidCallback onRun;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border.all(color: const Color(0xFF30363D)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: const Color(0xFF0F2F31),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(Icons.nfc, color: colors.primary, size: 30),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Tap Action', style: Theme.of(context).textTheme.headlineSmall),
+                    const SizedBox(height: 4),
+                    Text(
+                      status,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: colors.onSurfaceVariant),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              _StateChip(label: connected ? 'PC Ready' : 'No PC', active: connected),
+              const SizedBox(width: 8),
+              _StateChip(label: trusted ? 'Trusted' : 'Untrusted', active: trusted),
+            ],
+          ),
+          const SizedBox(height: 18),
+          SizedBox(
+            width: double.infinity,
+            height: 50,
+            child: FilledButton.icon(
+              onPressed: busy ? null : onRun,
+              icon: busy
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.bolt),
+              label: const Text('Run Tap Action'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionCard extends StatelessWidget {
+  const _SectionCard({
+    required this.title,
+    required this.child,
+    this.trailing,
+  });
+
+  final String title;
+  final Widget child;
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: colors.surface,
+        border: Border.all(color: const Color(0xFF30363D)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+              ),
+              if (trailing != null) trailing!,
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _StateChip extends StatelessWidget {
+  const _StateChip({required this.label, required this.active});
+
+  final String label;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: active ? const Color(0xFF11261A) : const Color(0xFF252B34),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: active ? const Color(0xFF3FB950) : const Color(0xFF8B949E),
+          fontWeight: FontWeight.w700,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+}
+
+class _ContextBadge extends StatelessWidget {
+  const _ContextBadge({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0F2F31),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFF2DD4BF),
+          fontWeight: FontWeight.w800,
+          fontSize: 12,
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  const _InfoRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 92,
+            child: Text(
+              label,
+              style: const TextStyle(color: Color(0xFF8B949E), fontWeight: FontWeight.w700),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
       ),
     );
   }
