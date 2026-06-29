@@ -15,13 +15,32 @@ const DEFAULT_INBOX = join(SERVER_DIR, "inbox");
 
 function loadOrCreateConfig() {
   if (existsSync(CONFIG_PATH)) {
-    return JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+    const existing = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+    let changed = false;
+
+    if (!existing.pc_id) {
+      existing.pc_id = randomUUID();
+      changed = true;
+    }
+    if (!existing.pairing_token) {
+      existing.pairing_token = existing.device_token ?? randomUUID().replaceAll("-", "");
+      changed = true;
+    }
+    if (!existing.trusted_devices) {
+      existing.trusted_devices = {};
+      changed = true;
+    }
+
+    if (changed) writeFileSync(CONFIG_PATH, JSON.stringify(existing, null, 2), "utf8");
+    return existing;
   }
 
   const config = {
+    pc_id: randomUUID(),
     host: "0.0.0.0",
     port: DEFAULT_PORT,
-    device_token: randomUUID().replaceAll("-", ""),
+    pairing_token: randomUUID().replaceAll("-", ""),
+    trusted_devices: {},
     inbox_dir: DEFAULT_INBOX,
     allowed_commands: {
       open_inbox: { type: "open_path", path: DEFAULT_INBOX },
@@ -59,7 +78,7 @@ function sendJson(res, status, body) {
     "Content-Type": "application/json; charset=utf-8",
     "Content-Length": data.length,
     "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Headers": "Content-Type, X-Device-Token",
+    "Access-Control-Allow-Headers": "Content-Type, X-Device-Id, X-Device-Token, X-Pairing-Token",
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS"
   });
   res.end(data);
@@ -191,7 +210,18 @@ async function handleIntent(intent) {
 }
 
 function isAuthorized(req) {
-  return req.headers["x-device-token"] === config.device_token;
+  const deviceId = req.headers["x-device-id"];
+  const deviceToken = req.headers["x-device-token"];
+  const trustedDevice = config.trusted_devices?.[deviceId];
+  if (!trustedDevice || trustedDevice.token !== deviceToken) return false;
+
+  trustedDevice.last_seen_at = new Date().toISOString();
+  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), "utf8");
+  return true;
+}
+
+function isPairingAuthorized(req) {
+  return req.headers["x-pairing-token"] === config.pairing_token;
 }
 
 async function handleRequest(req, res) {
@@ -207,6 +237,8 @@ async function handleRequest(req, res) {
     sendJson(res, 200, {
       ok: true,
       app: APP_NAME,
+      pc_id: config.pc_id,
+      pc_name: hostname(),
       time_ms: nowMs(),
       inbox_dir: inboxDir
     });
@@ -218,12 +250,46 @@ async function handleRequest(req, res) {
     const port = Number(config.port ?? DEFAULT_PORT);
     sendJson(res, 200, {
       app: APP_NAME,
+      pc_id: config.pc_id,
       pc_name: hostname(),
       port,
       ips,
-      device_token: config.device_token,
       base_urls: ips.map((ip) => `http://${ip}:${port}`)
     });
+    return;
+  }
+
+  if (req.method === "POST" && route === "/api/devices/register") {
+    if (!isPairingAuthorized(req)) {
+      sendJson(res, 401, { ok: false, error: "Invalid pairing token" });
+      return;
+    }
+
+    try {
+      const body = await readBody(req);
+      const registration = JSON.parse(body.toString("utf8"));
+      const deviceId = String(registration.device_id ?? "").trim();
+      const deviceName = String(registration.device_name ?? "Android device").trim();
+      if (!deviceId) throw new Error("Missing device_id");
+
+      const deviceToken = randomUUID().replaceAll("-", "");
+      config.trusted_devices[deviceId] = {
+        name: deviceName,
+        token: deviceToken,
+        trusted_at: new Date().toISOString(),
+        last_seen_at: null
+      };
+      writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), "utf8");
+
+      sendJson(res, 200, {
+        ok: true,
+        pc_id: config.pc_id,
+        device_id: deviceId,
+        device_token: deviceToken
+      });
+    } catch (error) {
+      sendJson(res, 400, { ok: false, error: error.message });
+    }
     return;
   }
 
@@ -272,7 +338,8 @@ server.listen(port, host, () => {
   console.log(APP_NAME);
   console.log(`Config: ${CONFIG_PATH}`);
   console.log(`Inbox : ${inboxDir}`);
-  console.log(`Token : ${config.device_token}`);
+  console.log(`Pairing token : ${config.pairing_token}`);
+  console.log(`Trusted devices: ${Object.keys(config.trusted_devices ?? {}).length}`);
   for (const ip of localIps()) console.log(`URL   : http://${ip}:${port}`);
   console.log("Health: /health");
   console.log("Pair  : /pair");

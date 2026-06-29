@@ -27,7 +27,14 @@ Saat pertama jalan, server membuat `config.json` otomatis berisi token pairing.
 Header wajib untuk endpoint `POST`:
 
 ```http
-X-Device-Token: token-dari-config-json
+X-Device-Id: device-id-dari-app
+X-Device-Token: device-token-dari-proses-register
+```
+
+Untuk register device baru:
+
+```http
+X-Pairing-Token: pairing-token-dari-output-server
 ```
 
 ## Contoh intent

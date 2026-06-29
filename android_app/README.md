@@ -5,8 +5,11 @@ Flutter client awal untuk mengetes koneksi Android ke PC Local Server.
 ## Fitur awal
 
 - input PC server URL
-- input token dari `Pc Local Server/config.json`
+- input pairing token dari output PC server
+- register Android sebagai trusted device
+- simpan config lokal di app
 - test `GET /health`
+- find PC kalau IP berubah
 - kirim URL dummy ke PC
 - kirim teks ke clipboard PC
 - simulasi tap NFC berdasarkan isi input
