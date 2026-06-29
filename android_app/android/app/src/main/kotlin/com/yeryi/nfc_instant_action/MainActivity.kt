@@ -1,5 +1,6 @@
 package com.yeryi.nfc_instant_action
 
+import android.os.Build
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -21,7 +22,8 @@ class MainActivity : FlutterActivity() {
                             "pairingToken" to prefs.getString("pairingToken", ""),
                             "deviceId" to prefs.getString("deviceId", ""),
                             "deviceToken" to prefs.getString("deviceToken", ""),
-                            "pcId" to prefs.getString("pcId", "")
+                            "pcId" to prefs.getString("pcId", ""),
+                            "deviceName" to readableDeviceName()
                         )
                     )
                 }
@@ -38,6 +40,16 @@ class MainActivity : FlutterActivity() {
                 }
                 else -> result.notImplemented()
             }
+        }
+    }
+
+    private fun readableDeviceName(): String {
+        val manufacturer = Build.MANUFACTURER.trim()
+        val model = Build.MODEL.trim()
+        return if (model.lowercase().startsWith(manufacturer.lowercase())) {
+            model
+        } else {
+            "$manufacturer $model"
         }
     }
 }

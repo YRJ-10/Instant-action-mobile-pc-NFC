@@ -22,7 +22,7 @@ function createWindow() {
     minWidth: 880,
     minHeight: 620,
     title: APP_TITLE,
-    backgroundColor: "#f6f7f9",
+    backgroundColor: "#0d1117",
     webPreferences: {
       preload: join(__dirname, "preload.cjs"),
       contextIsolation: true,

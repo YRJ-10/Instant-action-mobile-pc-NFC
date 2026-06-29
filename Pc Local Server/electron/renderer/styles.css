@@ -1,16 +1,20 @@
 :root {
-  color-scheme: light;
-  --bg: #f6f7f9;
-  --panel: #ffffff;
-  --text: #111827;
-  --muted: #667085;
-  --border: #d8dee8;
-  --primary: #15616d;
-  --primary-soft: #e6f3f4;
-  --danger: #b42318;
-  --danger-soft: #fff0ef;
-  --ok: #067647;
-  --off: #6b7280;
+  color-scheme: dark;
+  --bg: #0d1117;
+  --panel: #161b22;
+  --panel-soft: #1f2733;
+  --text: #e6edf3;
+  --muted: #8b949e;
+  --border: #30363d;
+  --primary: #2dd4bf;
+  --primary-strong: #14b8a6;
+  --primary-soft: #0f2f31;
+  --danger: #ff7b72;
+  --danger-soft: #341b1f;
+  --ok: #3fb950;
+  --ok-soft: #11261a;
+  --off: #8b949e;
+  --off-soft: #252b34;
   font-family: Inter, Segoe UI, system-ui, sans-serif;
 }
 
@@ -71,13 +75,15 @@ h1 {
 .power-button {
   min-width: 154px;
   padding: 12px 18px;
-  background: var(--primary);
-  color: #fff;
+  background: var(--primary-strong);
+  color: #06201d;
   font-weight: 700;
 }
 
 .power-button.off {
-  background: var(--off);
+  background: var(--off-soft);
+  color: var(--text);
+  border-color: var(--border);
 }
 
 .small-button {
@@ -111,6 +117,7 @@ h1 {
 .panel {
   background: var(--panel);
   border: 1px solid var(--border);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, 0.22);
   border-radius: 8px;
   padding: 16px;
   margin-bottom: 16px;
@@ -138,14 +145,14 @@ h1 {
   justify-content: center;
   padding: 5px 10px;
   border-radius: 999px;
-  background: #eef2f6;
+  background: var(--off-soft);
   color: var(--off);
   font-size: 13px;
   font-weight: 800;
 }
 
 .pill.running {
-  background: #ecfdf3;
+  background: var(--ok-soft);
   color: var(--ok);
 }
 
@@ -177,7 +184,7 @@ h1 {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  background: #f8fafc;
+  background: #0d1117;
   border: 1px solid var(--border);
   border-radius: 8px;
   font-size: 14px;
@@ -197,8 +204,8 @@ h1 {
   align-items: center;
   gap: 12px;
   padding: 12px;
-  background: #f8fafc;
-  border: 1px solid #e6ebf2;
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
 

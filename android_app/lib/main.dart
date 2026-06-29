@@ -51,6 +51,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _deviceId = '';
   String _deviceToken = '';
   String _pcId = '';
+  String _deviceName = 'Android device';
 
   @override
   void initState() {
@@ -72,6 +73,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _deviceId = config['deviceId']?.isNotEmpty == true ? config['deviceId']! : _newDeviceId();
     _deviceToken = config['deviceToken'] ?? '';
     _pcId = config['pcId'] ?? '';
+    _deviceName = config['deviceName']?.isNotEmpty == true ? config['deviceName']! : 'Android device';
 
     if ((config['baseUrl'] ?? '').isNotEmpty) {
       _baseUrlController.text = config['baseUrl']!;
@@ -113,7 +115,7 @@ class _HomeScreenState extends State<HomeScreen> {
         '/api/devices/register',
         {
           'device_id': _deviceId,
-          'device_name': Platform.localHostname,
+          'device_name': _deviceName,
         },
         pairing: true,
       );
