@@ -2,7 +2,32 @@
 
 Server lokal untuk menerima aksi dari Android via Wi-Fi.
 
-## Jalankan
+## Jalankan PC App
+
+Install dependency sekali:
+
+```powershell
+cd electron
+npm.cmd install
+npx.cmd install-electron --no
+```
+
+Lalu buka desktop app:
+
+```powershell
+cd electron
+npm.cmd start
+```
+
+Atau double-click:
+
+```text
+start-pc-app.cmd
+```
+
+Saat app dibuka, server otomatis aktif. Gunakan tombol power di kanan atas untuk stop/start server.
+
+## Jalankan Server CLI
 
 ```powershell
 cd "Pc Local Server"

@@ -4,14 +4,28 @@ import { randomUUID } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { hostname, networkInterfaces, platform, homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
-const APP_NAME = "NFC Instant Action PC Server";
-const DEFAULT_PORT = 8765;
+export const APP_NAME = "NFC Instant Action PC Server";
+export const DEFAULT_PORT = 8765;
+
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
-const CONFIG_PATH = join(SERVER_DIR, "config.json");
+export const CONFIG_PATH = join(SERVER_DIR, "config.json");
 const DEFAULT_INBOX = join(SERVER_DIR, "inbox");
+const MAX_LOGS = 80;
+
+let server = null;
+let serverStartedAt = null;
+let requestLog = [];
+
+function nowMs() {
+  return Date.now();
+}
+
+function saveConfig() {
+  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), "utf8");
+}
 
 function loadOrCreateConfig() {
   if (existsSync(CONFIG_PATH)) {
@@ -35,7 +49,7 @@ function loadOrCreateConfig() {
     return existing;
   }
 
-  const config = {
+  const created = {
     pc_id: randomUUID(),
     host: "0.0.0.0",
     port: DEFAULT_PORT,
@@ -48,19 +62,15 @@ function loadOrCreateConfig() {
     }
   };
 
-  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), "utf8");
-  return config;
+  writeFileSync(CONFIG_PATH, JSON.stringify(created, null, 2), "utf8");
+  return created;
 }
 
 const config = loadOrCreateConfig();
-const inboxDir = resolve(config.inbox_dir ?? DEFAULT_INBOX);
+export const inboxDir = resolve(config.inbox_dir ?? DEFAULT_INBOX);
 mkdirSync(inboxDir, { recursive: true });
 
-function nowMs() {
-  return Date.now();
-}
-
-function localIps() {
+export function localIps() {
   const ips = [];
   for (const entries of Object.values(networkInterfaces())) {
     for (const entry of entries ?? []) {
@@ -70,6 +80,15 @@ function localIps() {
     }
   }
   return [...new Set(ips)].sort();
+}
+
+function logEvent(type, detail = {}) {
+  requestLog.unshift({
+    time: new Date().toISOString(),
+    type,
+    ...detail
+  });
+  requestLog = requestLog.slice(0, MAX_LOGS);
 }
 
 function sendJson(res, status, body) {
@@ -147,7 +166,7 @@ async function setClipboard(text) {
   });
 }
 
-async function openTarget(target) {
+export async function openTarget(target) {
   if (platform() === "win32") {
     await run("cmd", ["/c", "start", "", String(target)], { windowsHide: true });
     return;
@@ -216,7 +235,7 @@ function isAuthorized(req) {
   if (!trustedDevice || trustedDevice.token !== deviceToken) return false;
 
   trustedDevice.last_seen_at = new Date().toISOString();
-  writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), "utf8");
+  saveConfig();
   return true;
 }
 
@@ -261,6 +280,7 @@ async function handleRequest(req, res) {
 
   if (req.method === "POST" && route === "/api/devices/register") {
     if (!isPairingAuthorized(req)) {
+      logEvent("register_denied", { device: "unknown" });
       sendJson(res, 401, { ok: false, error: "Invalid pairing token" });
       return;
     }
@@ -279,7 +299,8 @@ async function handleRequest(req, res) {
         trusted_at: new Date().toISOString(),
         last_seen_at: null
       };
-      writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), "utf8");
+      saveConfig();
+      logEvent("device_registered", { device: deviceName });
 
       sendJson(res, 200, {
         ok: true,
@@ -294,6 +315,7 @@ async function handleRequest(req, res) {
   }
 
   if (req.method === "POST" && !isAuthorized(req)) {
+    logEvent("unauthorized", { route });
     sendJson(res, 401, { ok: false, error: "Unauthorized" });
     return;
   }
@@ -303,6 +325,7 @@ async function handleRequest(req, res) {
       const body = await readBody(req);
       const intent = JSON.parse(body.toString("utf8"));
       const result = await handleIntent(intent);
+      logEvent("intent", { action: result.action ?? intent.type });
       sendJson(res, 200, { ok: true, result });
     } catch (error) {
       sendJson(res, 400, { ok: false, error: error.message });
@@ -316,6 +339,7 @@ async function handleRequest(req, res) {
       const body = await readBody(req);
       const target = uniquePath(inboxDir, filename);
       writeFileSync(target, body);
+      logEvent("file", { filename, bytes: body.length });
       sendJson(res, 200, { ok: true, saved_to: target, bytes: body.length });
     } catch (error) {
       sendJson(res, 400, { ok: false, error: error.message });
@@ -326,21 +350,99 @@ async function handleRequest(req, res) {
   sendJson(res, 404, { ok: false, error: "Not found" });
 }
 
-const host = config.host ?? "0.0.0.0";
-const port = Number(config.port ?? DEFAULT_PORT);
-const server = createServer((req, res) => {
-  handleRequest(req, res).catch((error) => {
-    sendJson(res, 500, { ok: false, error: error.message });
-  });
-});
+export function getServerState() {
+  const port = Number(config.port ?? DEFAULT_PORT);
+  return {
+    app: APP_NAME,
+    running: Boolean(server),
+    started_at: serverStartedAt,
+    pc_id: config.pc_id,
+    pc_name: hostname(),
+    port,
+    ips: localIps(),
+    base_urls: localIps().map((ip) => `http://${ip}:${port}`),
+    pairing_token: config.pairing_token,
+    inbox_dir: inboxDir,
+    trusted_devices: Object.entries(config.trusted_devices ?? {}).map(([id, device]) => ({
+      id,
+      name: device.name,
+      trusted_at: device.trusted_at,
+      last_seen_at: device.last_seen_at
+    })),
+    request_log: requestLog
+  };
+}
 
-server.listen(port, host, () => {
+export function startServer() {
+  if (server) return Promise.resolve(getServerState());
+
+  const host = config.host ?? "0.0.0.0";
+  const port = Number(config.port ?? DEFAULT_PORT);
+  server = createServer((req, res) => {
+    handleRequest(req, res).catch((error) => {
+      sendJson(res, 500, { ok: false, error: error.message });
+    });
+  });
+
+  return new Promise((resolveStart, reject) => {
+    server.once("error", (error) => {
+      server = null;
+      serverStartedAt = null;
+      reject(error);
+    });
+    server.listen(port, host, () => {
+      serverStartedAt = new Date().toISOString();
+      logEvent("server_started", { port });
+      resolveStart(getServerState());
+    });
+  });
+}
+
+export function stopServer() {
+  if (!server) return Promise.resolve(getServerState());
+
+  return new Promise((resolveStop, reject) => {
+    server.close((error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      server = null;
+      serverStartedAt = null;
+      logEvent("server_stopped");
+      resolveStop(getServerState());
+    });
+  });
+}
+
+export function revokeDevice(deviceId) {
+  const device = config.trusted_devices?.[deviceId];
+  if (!device) return getServerState();
+
+  delete config.trusted_devices[deviceId];
+  saveConfig();
+  logEvent("device_revoked", { device: device.name ?? deviceId });
+  return getServerState();
+}
+
+export function printStartupInfo() {
+  const state = getServerState();
   console.log(APP_NAME);
   console.log(`Config: ${CONFIG_PATH}`);
   console.log(`Inbox : ${inboxDir}`);
-  console.log(`Pairing token : ${config.pairing_token}`);
-  console.log(`Trusted devices: ${Object.keys(config.trusted_devices ?? {}).length}`);
-  for (const ip of localIps()) console.log(`URL   : http://${ip}:${port}`);
+  console.log(`Pairing token : ${state.pairing_token}`);
+  console.log(`Trusted devices: ${state.trusted_devices.length}`);
+  for (const url of state.base_urls) console.log(`URL   : ${url}`);
   console.log("Health: /health");
   console.log("Pair  : /pair");
-});
+}
+
+const isDirectRun = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+if (isDirectRun) {
+  startServer()
+    .then(() => printStartupInfo())
+    .catch((error) => {
+      console.error(error);
+      process.exit(1);
+    });
+}

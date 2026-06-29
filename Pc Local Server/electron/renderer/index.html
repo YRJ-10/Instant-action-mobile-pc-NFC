@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Instant Action PC</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">Instant Action PC</p>
+          <h1>Local server control</h1>
+        </div>
+        <button id="powerButton" class="power-button" type="button">Loading</button>
+      </header>
+
+      <section class="status-grid">
+        <article class="panel status-panel">
+          <div class="panel-title">
+            <span>Status</span>
+            <span id="statusPill" class="pill">Unknown</span>
+          </div>
+          <dl class="compact-list">
+            <div>
+              <dt>PC</dt>
+              <dd id="pcName">-</dd>
+            </div>
+            <div>
+              <dt>Port</dt>
+              <dd id="port">-</dd>
+            </div>
+            <div>
+              <dt>Inbox</dt>
+              <dd><button id="openInboxButton" class="link-button" type="button">Open folder</button></dd>
+            </div>
+          </dl>
+        </article>
+
+        <article class="panel">
+          <div class="panel-title">
+            <span>Pairing token</span>
+            <button id="copyTokenButton" class="small-button" type="button">Copy</button>
+          </div>
+          <code id="pairingToken" class="token">-</code>
+        </article>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <span>Server URLs</span>
+          <span class="muted">Use the Wi-Fi IP on Android</span>
+        </div>
+        <div id="urlList" class="url-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <span>Trusted devices</span>
+          <span id="deviceCount" class="muted">0 devices</span>
+        </div>
+        <div id="deviceList" class="device-list"></div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-title">
+          <span>Activity</span>
+          <span class="muted">Latest server events</span>
+        </div>
+        <div id="logList" class="log-list"></div>
+      </section>
+    </main>
+
+    <script src="./renderer.js"></script>
+  </body>
+</html>

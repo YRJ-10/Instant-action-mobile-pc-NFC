@@ -4,6 +4,7 @@ Pc Local Server/inbox/
 # Flutter / Android
 **/.dart_tool/
 **/.idea/
+**/node_modules/
 **/.flutter-plugins
 **/.flutter-plugins-dependencies
 **/build/
