@@ -15,14 +15,68 @@ class InstantActionApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    const background = Color(0xFF0D1117);
+    const surface = Color(0xFF161B22);
+    const surfaceHigh = Color(0xFF1F2733);
+    const text = Color(0xFFE6EDF3);
+    const muted = Color(0xFF8B949E);
+    const primary = Color(0xFF2DD4BF);
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       title: 'Instant Action',
       theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF15616D)),
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: background,
+        colorScheme: ColorScheme.fromSeed(
+          seedColor: primary,
+          brightness: Brightness.dark,
+          primary: primary,
+          surface: surface,
+          surfaceContainerHighest: surfaceHigh,
+        ),
         useMaterial3: true,
-        inputDecorationTheme: const InputDecorationTheme(
-          border: OutlineInputBorder(),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: background,
+          foregroundColor: text,
+          elevation: 0,
+          centerTitle: false,
+        ),
+        textTheme: ThemeData.dark().textTheme.apply(
+              bodyColor: text,
+              displayColor: text,
+            ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: surface,
+          labelStyle: const TextStyle(color: muted),
+          prefixIconColor: muted,
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFF30363D)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: primary, width: 1.4),
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+          ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            backgroundColor: primary,
+            foregroundColor: const Color(0xFF06201D),
+            disabledBackgroundColor: const Color(0xFF252B34),
+            disabledForegroundColor: muted,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
+        ),
+        iconButtonTheme: IconButtonThemeData(
+          style: IconButton.styleFrom(
+            foregroundColor: primary,
+            disabledForegroundColor: muted,
+          ),
         ),
       ),
       home: const HomeScreen(),
@@ -416,6 +470,7 @@ class _StatusPanel extends StatelessWidget {
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: colors.surfaceContainerHighest,
+        border: Border.all(color: const Color(0xFF30363D)),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
