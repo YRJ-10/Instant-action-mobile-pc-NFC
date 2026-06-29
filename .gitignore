@@ -3,9 +3,11 @@ Pc Local Server/inbox/
 
 # Flutter / Android
 **/.dart_tool/
+**/.idea/
 **/.flutter-plugins
 **/.flutter-plugins-dependencies
 **/build/
 **/.gradle/
 **/local.properties
 **/generated_plugin_registrant.dart
+**/GeneratedPluginRegistrant.java
