@@ -3,10 +3,13 @@ package com.yeryi.nfc_instant_action
 import android.app.Activity
 import android.content.ClipboardManager
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.provider.OpenableColumns
 import android.view.Gravity
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -14,6 +17,7 @@ import android.widget.TextView
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 
 class NfcLaunchActivity : Activity() {
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -44,9 +48,65 @@ class NfcLaunchActivity : Activity() {
         started = true
 
         mainHandler.postDelayed({
-            val contextText = readClipboardText()
-            processTap(contextText)
-        }, 350)
+            openFilePicker()
+        }, 250)
+    }
+
+    private fun openFilePicker() {
+        updateStatus("Choose file", "Select file to send to PC.", true)
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, true)
+        }
+        startActivityForResult(intent, REQUEST_PICK_FILES)
+    }
+
+    @Deprecated("Deprecated in Android API, still fine for this simple Activity.")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_PICK_FILES) return
+
+        if (resultCode != RESULT_OK || data == null) {
+            updateStatus("Cancelled", "No file selected.", false)
+            finishAfterDelay(900)
+            return
+        }
+
+        val uris = selectedUris(data)
+        if (uris.isEmpty()) {
+            updateStatus("Cancelled", "No file selected.", false)
+            finishAfterDelay(900)
+            return
+        }
+
+        processFiles(uris)
+    }
+
+    private fun selectedUris(data: Intent): List<Uri> {
+        val uris = mutableListOf<Uri>()
+        val clipData = data.clipData
+        if (clipData != null) {
+            for (index in 0 until clipData.itemCount) {
+                clipData.getItemAt(index).uri?.let { uris.add(it) }
+            }
+        } else {
+            data.data?.let { uris.add(it) }
+        }
+        return uris
+    }
+
+    private fun processFiles(uris: List<Uri>) {
+        updateStatus("Sending file", "Uploading ${uris.size} file(s) to PC.", true)
+        Thread {
+            val result = runCatching { uploadFiles(uris) }
+                .getOrElse { TapResult("File failed", it.message ?: "Unknown error", false) }
+
+            mainHandler.post {
+                updateStatus(result.title, result.message, false)
+                finishAfterDelay(1800)
+            }
+        }.start()
     }
 
     private fun processTap(contextText: String) {
@@ -109,10 +169,6 @@ class NfcLaunchActivity : Activity() {
             return TapResult("Not connected", "Open the app and trust this phone first.", false)
         }
 
-        if (contextText.isEmpty()) {
-            return TapResult("No context", "Show menu later.", false)
-        }
-
         val type = if (contextText.startsWith("http://") || contextText.startsWith("https://")) {
             "url"
         } else {
@@ -132,7 +188,98 @@ class NfcLaunchActivity : Activity() {
             .put("payload", payload)
 
         postIntent(baseUrl, deviceId, deviceToken, body)
+        getSharedPreferences(PREF_NAME, MODE_PRIVATE)
+            .edit()
+            .putString(PREF_LAST_SENT_CLIPBOARD, contextText)
+            .apply()
         return TapResult("Sent", if (type == "url") "URL sent to PC." else "Clipboard sent to PC.", false)
+    }
+
+    private fun lastSentClipboard(): String {
+        return getSharedPreferences(PREF_NAME, MODE_PRIVATE)
+            .getString(PREF_LAST_SENT_CLIPBOARD, "")
+            .orEmpty()
+    }
+
+    private fun shouldOpenFilePicker(contextText: String): Boolean {
+        if (contextText.isEmpty() || contextText == lastSentClipboard()) return true
+
+        val prefs = getSharedPreferences(PREF_NAME, MODE_PRIVATE)
+        val setupValues = listOf(
+            prefs.getString("pairingToken", ""),
+            prefs.getString("deviceId", ""),
+            prefs.getString("deviceToken", ""),
+            prefs.getString("pcId", ""),
+            prefs.getString("baseUrl", ""),
+        )
+
+        return setupValues.any { value ->
+            !value.isNullOrBlank() && value.trim() == contextText
+        }
+    }
+
+    private fun uploadFiles(uris: List<Uri>): TapResult {
+        val prefs = getSharedPreferences(PREF_NAME, MODE_PRIVATE)
+        val baseUrl = prefs.getString("baseUrl", "")?.trim().orEmpty().trimEnd('/')
+        val deviceId = prefs.getString("deviceId", "")?.trim().orEmpty()
+        val deviceToken = prefs.getString("deviceToken", "")?.trim().orEmpty()
+
+        if (baseUrl.isEmpty() || deviceId.isEmpty() || deviceToken.isEmpty()) {
+            return TapResult("Not connected", "Open the app and trust this phone first.", false)
+        }
+
+        var uploaded = 0
+        for (uri in uris) {
+            uploadFile(baseUrl, deviceId, deviceToken, uri)
+            uploaded += 1
+        }
+
+        return TapResult("File sent", "$uploaded file(s) sent to PC.", false)
+    }
+
+    private fun uploadFile(baseUrl: String, deviceId: String, deviceToken: String, uri: Uri) {
+        val filename = fileName(uri)
+        val encodedName = URLEncoder.encode(filename, Charsets.UTF_8.name())
+        val connection = URL("$baseUrl/api/files?filename=$encodedName").openConnection() as HttpURLConnection
+        connection.requestMethod = "POST"
+        connection.connectTimeout = 3000
+        connection.readTimeout = 30000
+        connection.doOutput = true
+        connection.setChunkedStreamingMode(0)
+        connection.setRequestProperty("Content-Type", "application/octet-stream")
+        connection.setRequestProperty("X-Device-Id", deviceId)
+        connection.setRequestProperty("X-Device-Token", deviceToken)
+
+        contentResolver.openInputStream(uri)?.use { input ->
+            connection.outputStream.use { output ->
+                input.copyTo(output)
+            }
+        } ?: throw IllegalStateException("Cannot read selected file")
+
+        val responseCode = connection.responseCode
+        val responseStream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
+        val responseText = responseStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+        if (responseCode !in 200..299) {
+            throw IllegalStateException("HTTP $responseCode")
+        }
+
+        val response = JSONObject(responseText)
+        if (!response.optBoolean("ok", false)) {
+            throw IllegalStateException(response.optString("error", "Upload failed"))
+        }
+    }
+
+    private fun fileName(uri: Uri): String {
+        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (index >= 0) {
+                    val name = cursor.getString(index)
+                    if (!name.isNullOrBlank()) return name
+                }
+            }
+        }
+        return "upload-${System.currentTimeMillis()}"
     }
 
     private fun postIntent(baseUrl: String, deviceId: String, deviceToken: String, body: JSONObject) {
@@ -182,6 +329,8 @@ class NfcLaunchActivity : Activity() {
     companion object {
         const val EXTRA_DEEP_LINK = "instant_action_deep_link"
         const val PREF_PENDING_DEEP_LINK = "pendingDeepLink"
+        private const val PREF_LAST_SENT_CLIPBOARD = "lastSentClipboard"
+        private const val REQUEST_PICK_FILES = 7291
         private const val PREF_NAME = "instant_action"
         private const val DEFAULT_DEEP_LINK = "nfcinstant://tap"
     }
