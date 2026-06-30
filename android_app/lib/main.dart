@@ -117,6 +117,8 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _prefs.setMethodCallHandler(_handleNativeCall);
+    _urlController.addListener(_refreshContextPreview);
+    _textController.addListener(_refreshContextPreview);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_bootstrap());
     });
@@ -124,11 +126,17 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _urlController.removeListener(_refreshContextPreview);
+    _textController.removeListener(_refreshContextPreview);
     _baseUrlController.dispose();
     _pairingTokenController.dispose();
     _urlController.dispose();
     _textController.dispose();
     super.dispose();
+  }
+
+  void _refreshContextPreview() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _loadConfig() async {
@@ -290,6 +298,12 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _pickAndSendFile() async {
+    await _saveConfig(showStatus: false);
+    await _prefs.invokeMethod('pickAndSendFile');
+    if (mounted) setState(() => _status = 'Choose file to send');
+  }
+
   Future<void> _simulateTap() async {
     final text = _textController.text.trim();
     final url = _urlController.text.trim();
@@ -423,7 +437,7 @@ class _HomeScreenState extends State<HomeScreen> {
           trusted: _isTrusted,
           connected: _hasPc,
           status: _status,
-          onRun: _simulateTap,
+          onRun: _pickAndSendFile,
         ),
         const SizedBox(height: 16),
         _SectionCard(
@@ -715,8 +729,8 @@ class _HeroPanel extends StatelessWidget {
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.bolt),
-              label: const Text('Run Tap Action'),
+                  : const Icon(Icons.attach_file),
+              label: const Text('Pick & Send File'),
             ),
           ),
         ],

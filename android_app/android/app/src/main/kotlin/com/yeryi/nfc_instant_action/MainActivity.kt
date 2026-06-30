@@ -61,6 +61,10 @@ class MainActivity : FlutterActivity() {
                     }
                     result.success(link)
                 }
+                "pickAndSendFile" -> {
+                    startActivity(Intent(this, NfcLaunchActivity::class.java))
+                    result.success(true)
+                }
                 else -> result.notImplemented()
             }
         }
