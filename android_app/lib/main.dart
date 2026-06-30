@@ -69,7 +69,8 @@ class InstantActionApp extends StatelessWidget {
             foregroundColor: const Color(0xFF06201D),
             disabledBackgroundColor: const Color(0xFF252B34),
             disabledForegroundColor: muted,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
           ),
         ),
         iconButtonTheme: IconButtonThemeData(
@@ -95,10 +96,11 @@ class _HomeScreenState extends State<HomeScreen> {
   static const _prefs = MethodChannel('instant_action/preferences');
   static const _appName = 'NFC Instant Action PC Server';
 
-  final _baseUrlController = TextEditingController(text: 'http://192.168.1.6:8765');
+  final _baseUrlController =
+      TextEditingController(text: 'http://192.168.1.6:8765');
   final _pairingTokenController = TextEditingController();
-  final _urlController = TextEditingController(text: 'https://example.com');
-  final _textController = TextEditingController(text: 'hello from android');
+  final _urlController = TextEditingController();
+  final _textController = TextEditingController();
 
   bool _busy = false;
   int _tabIndex = 0;
@@ -111,7 +113,10 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadConfig();
+    _prefs.setMethodCallHandler(_handleNativeCall);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_bootstrap());
+    });
   }
 
   @override
@@ -124,11 +129,16 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadConfig() async {
-    final config = await _prefs.invokeMapMethod<String, String>('loadConfig') ?? {};
-    _deviceId = config['deviceId']?.isNotEmpty == true ? config['deviceId']! : _newDeviceId();
+    final config =
+        await _prefs.invokeMapMethod<String, String>('loadConfig') ?? {};
+    _deviceId = config['deviceId']?.isNotEmpty == true
+        ? config['deviceId']!
+        : _newDeviceId();
     _deviceToken = config['deviceToken'] ?? '';
     _pcId = config['pcId'] ?? '';
-    _deviceName = config['deviceName']?.isNotEmpty == true ? config['deviceName']! : 'Android device';
+    _deviceName = config['deviceName']?.isNotEmpty == true
+        ? config['deviceName']!
+        : 'Android device';
 
     if ((config['baseUrl'] ?? '').isNotEmpty) {
       _baseUrlController.text = config['baseUrl']!;
@@ -137,8 +147,33 @@ class _HomeScreenState extends State<HomeScreen> {
 
     await _saveConfig(showStatus: false);
     if (mounted) {
-      setState(() => _status = _deviceToken.isEmpty ? 'Register device first' : 'Ready');
+      setState(() =>
+          _status = _deviceToken.isEmpty ? 'Register device first' : 'Ready');
     }
+  }
+
+  Future<void> _bootstrap() async {
+    await _loadConfig();
+    final link = await _prefs.invokeMethod<String>('consumeInitialDeepLink');
+    await _handleDeepLink(link);
+  }
+
+  Future<dynamic> _handleNativeCall(MethodCall call) async {
+    if (call.method == 'deepLink') {
+      unawaited(_handleDeepLink(call.arguments as String?));
+    }
+  }
+
+  Future<void> _handleDeepLink(String? link) async {
+    if (link == null || link.isEmpty || !mounted) return;
+
+    final uri = Uri.tryParse(link);
+    if (uri?.scheme != 'nfcinstant' || uri?.host != 'tap') return;
+
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
+    setState(() => _tabIndex = 0);
+    await _simulateTap();
   }
 
   Future<void> _saveConfig({bool showStatus = true}) async {
@@ -225,7 +260,8 @@ class _HomeScreenState extends State<HomeScreen> {
       final client = HttpClient();
       client.connectionTimeout = const Duration(milliseconds: 350);
       final request = await client.getUrl(Uri.parse('$baseUrl/pair'));
-      final response = await request.close().timeout(const Duration(milliseconds: 650));
+      final response =
+          await request.close().timeout(const Duration(milliseconds: 650));
       final json = await _readJson(response);
       if (json['app'] != _appName) return null;
       if (_pcId.isNotEmpty && json['pc_id'] != _pcId) return null;
@@ -311,7 +347,8 @@ class _HomeScreenState extends State<HomeScreen> {
     final request = await client.postUrl(uri);
     request.headers.contentType = ContentType.json;
     if (pairing) {
-      request.headers.add('X-Pairing-Token', _pairingTokenController.text.trim());
+      request.headers
+          .add('X-Pairing-Token', _pairingTokenController.text.trim());
     } else {
       request.headers.add('X-Device-Id', _deviceId);
       request.headers.add('X-Device-Token', _deviceToken);
@@ -337,7 +374,8 @@ class _HomeScreenState extends State<HomeScreen> {
   String _newDeviceId() {
     final random = Random.secure();
     final bytes = List<int>.generate(16, (_) => random.nextInt(256));
-    final hex = bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
+    final hex =
+        bytes.map((byte) => byte.toRadixString(16).padLeft(2, '0')).join();
     return 'android-$hex';
   }
 
@@ -638,7 +676,8 @@ class _HeroPanel extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Tap Action', style: Theme.of(context).textTheme.headlineSmall),
+                    Text('Tap Action',
+                        style: Theme.of(context).textTheme.headlineSmall),
                     const SizedBox(height: 4),
                     Text(
                       status,
@@ -654,9 +693,11 @@ class _HeroPanel extends StatelessWidget {
           const SizedBox(height: 16),
           Row(
             children: [
-              _StateChip(label: connected ? 'PC Ready' : 'No PC', active: connected),
+              _StateChip(
+                  label: connected ? 'PC Ready' : 'No PC', active: connected),
               const SizedBox(width: 8),
-              _StateChip(label: trusted ? 'Trusted' : 'Untrusted', active: trusted),
+              _StateChip(
+                  label: trusted ? 'Trusted' : 'Untrusted', active: trusted),
             ],
           ),
           const SizedBox(height: 18),
@@ -708,7 +749,8 @@ class _SectionCard extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(title, style: Theme.of(context).textTheme.titleMedium),
+                child:
+                    Text(title, style: Theme.of(context).textTheme.titleMedium),
               ),
               if (trailing != null) trailing!,
             ],
@@ -788,7 +830,8 @@ class _InfoRow extends StatelessWidget {
             width: 92,
             child: Text(
               label,
-              style: const TextStyle(color: Color(0xFF8B949E), fontWeight: FontWeight.w700),
+              style: const TextStyle(
+                  color: Color(0xFF8B949E), fontWeight: FontWeight.w700),
             ),
           ),
           Expanded(

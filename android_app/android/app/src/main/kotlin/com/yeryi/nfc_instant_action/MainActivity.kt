@@ -1,17 +1,27 @@
 package com.yeryi.nfc_instant_action
 
+import android.content.Intent
 import android.os.Build
+import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
     private val channelName = "instant_action/preferences"
+    private var channel: MethodChannel? = null
+    private var latestDeepLink: String? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        latestDeepLink = intent?.dataString
+        super.onCreate(savedInstanceState)
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
 
-        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName).setMethodCallHandler { call, result ->
+        channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+        channel?.setMethodCallHandler { call, result ->
             val prefs = getSharedPreferences("instant_action", MODE_PRIVATE)
 
             when (call.method) {
@@ -38,9 +48,23 @@ class MainActivity : FlutterActivity() {
                         .apply()
                     result.success(true)
                 }
+                "consumeInitialDeepLink" -> {
+                    val link = latestDeepLink
+                    latestDeepLink = null
+                    result.success(link)
+                }
                 else -> result.notImplemented()
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+
+        val link = intent.dataString ?: return
+        latestDeepLink = link
+        channel?.invokeMethod("deepLink", link)
     }
 
     private fun readableDeviceName(): String {
