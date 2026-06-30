@@ -81,6 +81,9 @@ class InstantActionApp extends StatelessWidget {
         ),
       ),
       home: const HomeScreen(),
+      onGenerateRoute: (_) {
+        return MaterialPageRoute(builder: (_) => const HomeScreen());
+      },
     );
   }
 }

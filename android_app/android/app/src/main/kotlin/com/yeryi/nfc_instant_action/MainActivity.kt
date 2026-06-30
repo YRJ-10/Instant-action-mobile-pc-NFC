@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.RenderMode
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
@@ -13,8 +14,12 @@ class MainActivity : FlutterActivity() {
     private var latestDeepLink: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        latestDeepLink = intent?.dataString
+        latestDeepLink = deepLinkFrom(intent)
         super.onCreate(savedInstanceState)
+    }
+
+    override fun getRenderMode(): RenderMode {
+        return RenderMode.texture
     }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
@@ -49,8 +54,11 @@ class MainActivity : FlutterActivity() {
                     result.success(true)
                 }
                 "consumeInitialDeepLink" -> {
-                    val link = latestDeepLink
+                    val link = latestDeepLink ?: prefs.getString(NfcLaunchActivity.PREF_PENDING_DEEP_LINK, null)
                     latestDeepLink = null
+                    if (link != null) {
+                        prefs.edit().remove(NfcLaunchActivity.PREF_PENDING_DEEP_LINK).apply()
+                    }
                     result.success(link)
                 }
                 else -> result.notImplemented()
@@ -62,9 +70,13 @@ class MainActivity : FlutterActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
 
-        val link = intent.dataString ?: return
+        val link = deepLinkFrom(intent) ?: return
         latestDeepLink = link
         channel?.invokeMethod("deepLink", link)
+    }
+
+    private fun deepLinkFrom(intent: Intent?): String? {
+        return intent?.getStringExtra(NfcLaunchActivity.EXTRA_DEEP_LINK) ?: intent?.dataString
     }
 
     private fun readableDeviceName(): String {

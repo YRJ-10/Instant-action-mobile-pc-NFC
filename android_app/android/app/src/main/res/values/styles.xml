@@ -7,4 +7,9 @@
     <style name="NormalTheme" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
+
+    <style name="NfcLaunchTheme" parent="@android:style/Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#0D1117</item>
+        <item name="android:windowNoTitle">true</item>
+    </style>
 </resources>
