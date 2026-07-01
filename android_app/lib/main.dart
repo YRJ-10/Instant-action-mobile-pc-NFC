@@ -117,8 +117,6 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _prefs.setMethodCallHandler(_handleNativeCall);
-    _urlController.addListener(_refreshContextPreview);
-    _textController.addListener(_refreshContextPreview);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) unawaited(_bootstrap());
     });
@@ -126,17 +124,11 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
-    _urlController.removeListener(_refreshContextPreview);
-    _textController.removeListener(_refreshContextPreview);
     _baseUrlController.dispose();
     _pairingTokenController.dispose();
     _urlController.dispose();
     _textController.dispose();
     super.dispose();
-  }
-
-  void _refreshContextPreview() {
-    if (mounted) setState(() {});
   }
 
   Future<void> _loadConfig() async {
@@ -412,22 +404,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool get _hasPc => _pcId.isNotEmpty;
 
-  String get _contextType {
-    final url = _urlController.text.trim();
-    final text = _textController.text.trim();
-    if (url.startsWith('http://') || url.startsWith('https://')) return 'URL';
-    if (text.isNotEmpty) return 'Clipboard';
-    return 'None';
-  }
-
-  String get _contextValue {
-    final url = _urlController.text.trim();
-    final text = _textController.text.trim();
-    if (url.startsWith('http://') || url.startsWith('https://')) return url;
-    if (text.isNotEmpty) return text;
-    return 'No context selected';
-  }
-
   Widget _buildTab() {
     return switch (_tabIndex) {
       0 => _buildActionTab(),
@@ -481,17 +457,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 ),
               ),
             ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        _SectionCard(
-          title: 'Current Context',
-          trailing: _ContextBadge(label: _contextType),
-          child: Text(
-            _contextValue,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.bodyLarge,
           ),
         ),
         const SizedBox(height: 16),
@@ -787,12 +752,10 @@ class _SectionCard extends StatelessWidget {
   const _SectionCard({
     required this.title,
     required this.child,
-    this.trailing,
   });
 
   final String title;
   final Widget child;
-  final Widget? trailing;
 
   @override
   Widget build(BuildContext context) {
@@ -813,7 +776,6 @@ class _SectionCard extends StatelessWidget {
                 child:
                     Text(title, style: Theme.of(context).textTheme.titleMedium),
               ),
-              if (trailing != null) trailing!,
             ],
           ),
           const SizedBox(height: 14),
@@ -843,31 +805,6 @@ class _StateChip extends StatelessWidget {
         style: TextStyle(
           color: active ? const Color(0xFF3FB950) : const Color(0xFF8B949E),
           fontWeight: FontWeight.w700,
-          fontSize: 12,
-        ),
-      ),
-    );
-  }
-}
-
-class _ContextBadge extends StatelessWidget {
-  const _ContextBadge({required this.label});
-
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F2F31),
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          color: Color(0xFF2DD4BF),
-          fontWeight: FontWeight.w800,
           fontSize: 12,
         ),
       ),
