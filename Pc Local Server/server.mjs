@@ -178,6 +178,15 @@ function run(command, args, options = {}) {
   });
 }
 
+function runCapture(command, args, options = {}) {
+  return new Promise((resolveRun, reject) => {
+    execFile(command, args, options, (error, stdout) => {
+      if (error) reject(error);
+      else resolveRun(stdout);
+    });
+  });
+}
+
 async function lockPc() {
   if (platform() !== "win32") {
     throw new Error("Lock PC is only implemented for Windows right now.");
@@ -240,6 +249,18 @@ async function setClipboard(text) {
       else reject(new Error(`Set-Clipboard exited with code ${code}`));
     });
   });
+}
+
+async function getClipboard() {
+  if (platform() !== "win32") {
+    throw new Error("Clipboard read is only implemented for Windows right now.");
+  }
+
+  return runCapture(
+    "powershell",
+    ["-NoProfile", "-Command", "Get-Clipboard -Raw"],
+    { windowsHide: true, encoding: "utf8" }
+  );
 }
 
 export async function openTarget(target) {
@@ -413,9 +434,20 @@ async function handleRequest(req, res) {
     return;
   }
 
-  if (req.method === "GET" && route.startsWith("/api/request-files") && !isAuthorized(req)) {
+  if (req.method === "GET" && (route.startsWith("/api/request-files") || route === "/api/clipboard") && !isAuthorized(req)) {
     logEvent("unauthorized", { route });
     sendJson(res, 401, { ok: false, error: "Unauthorized" });
+    return;
+  }
+
+  if (req.method === "GET" && route === "/api/clipboard") {
+    try {
+      const text = await getClipboard();
+      logEvent("clipboard_requested", { bytes: Buffer.byteLength(text, "utf8") });
+      sendJson(res, 200, { ok: true, text });
+    } catch (error) {
+      sendJson(res, 400, { ok: false, error: error.message });
+    }
     return;
   }
 

@@ -291,6 +291,23 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _pullPcClipboard() async {
+    await _run('Reading PC clipboard', () async {
+      if (_deviceToken.isEmpty) throw Exception('Register device first');
+      final result = await _getJson('/api/clipboard', authorized: true);
+      if (result['ok'] != true) {
+        throw Exception(result['error'] ?? 'Failed');
+      }
+
+      final text = result['text']?.toString() ?? '';
+      await Clipboard.setData(ClipboardData(text: text));
+      _textController.text = text;
+      return text.isEmpty
+          ? 'PC clipboard is empty'
+          : 'PC clipboard copied to phone';
+    });
+  }
+
   Future<void> _sendCommand(String commandId) async {
     await _sendIntent({
       'type': 'command',
@@ -555,6 +572,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _busy ? null : _pullPcClipboard,
+                  icon: const Icon(Icons.download_for_offline),
+                  label: const Text('Pull PC Clipboard'),
+                ),
+              ),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(
