@@ -3,9 +3,9 @@ import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 import { execFile, spawn } from "node:child_process";
 import { hostname, networkInterfaces, platform, homedir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 
 export const APP_NAME = "NFC Instant Action PC Server";
 export const DEFAULT_PORT = 8765;
@@ -13,6 +13,7 @@ export const DEFAULT_PORT = 8765;
 const SERVER_DIR = dirname(fileURLToPath(import.meta.url));
 export const CONFIG_PATH = join(SERVER_DIR, "config.json");
 const DEFAULT_INBOX = join(SERVER_DIR, "inbox");
+const DEFAULT_OUTBOX = join(SERVER_DIR, "outbox");
 const MAX_LOGS = 80;
 
 let server = null;
@@ -44,6 +45,10 @@ function loadOrCreateConfig() {
       existing.trusted_devices = {};
       changed = true;
     }
+    if (!existing.outbox_dir) {
+      existing.outbox_dir = DEFAULT_OUTBOX;
+      changed = true;
+    }
 
     if (changed) writeFileSync(CONFIG_PATH, JSON.stringify(existing, null, 2), "utf8");
     return existing;
@@ -56,6 +61,7 @@ function loadOrCreateConfig() {
     pairing_token: randomUUID().replaceAll("-", ""),
     trusted_devices: {},
     inbox_dir: DEFAULT_INBOX,
+    outbox_dir: DEFAULT_OUTBOX,
     allowed_commands: {
       open_inbox: { type: "open_path", path: DEFAULT_INBOX },
       open_downloads: { type: "open_path", path: join(homedir(), "Downloads") }
@@ -68,7 +74,9 @@ function loadOrCreateConfig() {
 
 const config = loadOrCreateConfig();
 export const inboxDir = resolve(config.inbox_dir ?? DEFAULT_INBOX);
+export const outboxDir = resolve(config.outbox_dir ?? DEFAULT_OUTBOX);
 mkdirSync(inboxDir, { recursive: true });
+mkdirSync(outboxDir, { recursive: true });
 
 export function localIps() {
   const ips = [];
@@ -135,6 +143,30 @@ function uniquePath(directory, filename) {
   }
 
   return target;
+}
+
+function safeOutboxPath(filename) {
+  const target = resolve(outboxDir, safeFilename(filename));
+  const distance = relative(outboxDir, target);
+  if (distance.startsWith("..") || resolve(distance) === distance) {
+    throw new Error("Invalid filename");
+  }
+  return target;
+}
+
+function listOutboxFiles() {
+  return readdirSync(outboxDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile())
+    .map((entry) => {
+      const target = join(outboxDir, entry.name);
+      const stats = statSync(target);
+      return {
+        name: entry.name,
+        bytes: stats.size,
+        modified_at: stats.mtime.toISOString()
+      };
+    })
+    .sort((a, b) => b.modified_at.localeCompare(a.modified_at));
 }
 
 function run(command, args, options = {}) {
@@ -381,6 +413,45 @@ async function handleRequest(req, res) {
     return;
   }
 
+  if (req.method === "GET" && route.startsWith("/api/request-files") && !isAuthorized(req)) {
+    logEvent("unauthorized", { route });
+    sendJson(res, 401, { ok: false, error: "Unauthorized" });
+    return;
+  }
+
+  if (req.method === "GET" && route === "/api/request-files") {
+    try {
+      sendJson(res, 200, { ok: true, files: listOutboxFiles() });
+    } catch (error) {
+      sendJson(res, 400, { ok: false, error: error.message });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && route === "/api/request-files/download") {
+    try {
+      const filename = requestUrl.searchParams.get("filename") ?? "";
+      const target = safeOutboxPath(filename);
+      if (!existsSync(target) || !statSync(target).isFile()) {
+        sendJson(res, 404, { ok: false, error: "File not found" });
+        return;
+      }
+
+      const data = readFileSync(target);
+      logEvent("file_requested", { filename, bytes: data.length });
+      res.writeHead(200, {
+        "Content-Type": "application/octet-stream",
+        "Content-Length": data.length,
+        "Content-Disposition": `attachment; filename="${safeFilename(filename)}"`,
+        "Access-Control-Allow-Origin": "*"
+      });
+      res.end(data);
+    } catch (error) {
+      sendJson(res, 400, { ok: false, error: error.message });
+    }
+    return;
+  }
+
   if (req.method === "POST" && route === "/api/intent") {
     try {
       const body = await readBody(req);
@@ -426,6 +497,8 @@ export function getServerState() {
     base_urls: localIps().map((ip) => `http://${ip}:${port}`),
     pairing_token: config.pairing_token,
     inbox_dir: inboxDir,
+    outbox_dir: outboxDir,
+    outbox_files: listOutboxFiles(),
     trusted_devices: Object.entries(config.trusted_devices ?? {}).map(([id, device]) => ({
       id,
       name: device.name,
@@ -493,6 +566,7 @@ export function printStartupInfo() {
   console.log(APP_NAME);
   console.log(`Config: ${CONFIG_PATH}`);
   console.log(`Inbox : ${inboxDir}`);
+  console.log(`Outbox: ${outboxDir}`);
   console.log(`Pairing token : ${state.pairing_token}`);
   console.log(`Trusted devices: ${state.trusted_devices.length}`);
   for (const url of state.base_urls) console.log(`URL   : ${url}`);

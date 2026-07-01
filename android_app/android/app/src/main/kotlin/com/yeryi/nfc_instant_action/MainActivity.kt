@@ -1,8 +1,12 @@
 package com.yeryi.nfc_instant_action
 
+import android.app.DownloadManager
+import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.android.RenderMode
 import io.flutter.embedding.engine.FlutterEngine
@@ -65,6 +69,16 @@ class MainActivity : FlutterActivity() {
                     startActivity(Intent(this, NfcLaunchActivity::class.java))
                     result.success(true)
                 }
+                "downloadToDownloads" -> {
+                    val args = call.arguments as Map<*, *>
+                    val downloadId = downloadToDownloads(
+                        url = args["url"] as? String ?: "",
+                        filename = args["filename"] as? String ?: "instant-action-file",
+                        deviceId = args["deviceId"] as? String ?: "",
+                        deviceToken = args["deviceToken"] as? String ?: "",
+                    )
+                    result.success(downloadId)
+                }
                 else -> result.notImplemented()
             }
         }
@@ -91,5 +105,29 @@ class MainActivity : FlutterActivity() {
         } else {
             "$manufacturer $model"
         }
+    }
+
+    private fun downloadToDownloads(
+        url: String,
+        filename: String,
+        deviceId: String,
+        deviceToken: String,
+    ): Long {
+        if (url.isBlank()) throw IllegalArgumentException("Missing download URL")
+        if (deviceId.isBlank() || deviceToken.isBlank()) throw IllegalArgumentException("Missing device auth")
+
+        val safeName = filename
+            .replace(Regex("""[\\/:*?"<>|]"""), "_")
+            .ifBlank { "instant-action-file" }
+        val request = DownloadManager.Request(Uri.parse(url))
+            .setTitle(safeName)
+            .setDescription("Instant Action PC")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, safeName)
+            .addRequestHeader("X-Device-Id", deviceId)
+            .addRequestHeader("X-Device-Token", deviceToken)
+
+        val manager = getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+        return manager.enqueue(request)
     }
 }

@@ -1,10 +1,12 @@
-import { app, BrowserWindow, clipboard, ipcMain, shell } from "electron";
-import { dirname, join } from "node:path";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell } from "electron";
+import { copyFileSync, existsSync } from "node:fs";
+import { basename, dirname, join, parse } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   getServerState,
   inboxDir,
   openTarget,
+  outboxDir,
   revokeDevice,
   startServer,
   stopServer
@@ -14,6 +16,20 @@ const APP_TITLE = "Instant Action PC";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 let mainWindow = null;
+
+function uniqueOutboxPath(filename) {
+  const cleanName = basename(String(filename || "file")).replace(/[\\/:*?"<>|]/g, "_") || "file";
+  const parsed = parse(cleanName);
+  let target = join(outboxDir, cleanName);
+  let index = 1;
+
+  while (existsSync(target)) {
+    target = join(outboxDir, `${parsed.name}-${index}${parsed.ext}`);
+    index += 1;
+  }
+
+  return target;
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({
@@ -60,6 +76,26 @@ ipcMain.handle("ui:copy", (_event, text) => {
 ipcMain.handle("ui:openInbox", async () => {
   await openTarget(inboxDir);
   return true;
+});
+
+ipcMain.handle("ui:openOutbox", async () => {
+  await openTarget(outboxDir);
+  return true;
+});
+
+ipcMain.handle("ui:addFilesToOutbox", async () => {
+  const selection = await dialog.showOpenDialog(mainWindow, {
+    title: "Add files to Outbox",
+    properties: ["openFile", "multiSelections"]
+  });
+  if (selection.canceled) return { copied: 0 };
+
+  let copied = 0;
+  for (const source of selection.filePaths) {
+    copyFileSync(source, uniqueOutboxPath(source));
+    copied += 1;
+  }
+  return { copied };
 });
 
 ipcMain.handle("ui:openExternal", async (_event, url) => {

@@ -7,6 +7,8 @@ const port = document.querySelector("#port");
 const pairingToken = document.querySelector("#pairingToken");
 const copyTokenButton = document.querySelector("#copyTokenButton");
 const openInboxButton = document.querySelector("#openInboxButton");
+const openOutboxButton = document.querySelector("#openOutboxButton");
+const addOutboxButton = document.querySelector("#addOutboxButton");
 const urlList = document.querySelector("#urlList");
 const deviceList = document.querySelector("#deviceList");
 const deviceCount = document.querySelector("#deviceCount");
@@ -128,6 +130,11 @@ powerButton.addEventListener("click", async () => {
 
 copyTokenButton.addEventListener("click", () => api.copy(state?.pairing_token ?? ""));
 openInboxButton.addEventListener("click", () => api.openInbox());
+openOutboxButton.addEventListener("click", () => api.openOutbox());
+addOutboxButton.addEventListener("click", async () => {
+  await api.addFilesToOutbox();
+  await refresh();
+});
 
 refresh();
 setInterval(refresh, 2500);

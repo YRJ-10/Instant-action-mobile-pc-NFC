@@ -112,6 +112,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _deviceToken = '';
   String _pcId = '';
   String _deviceName = 'Android device';
+  List<_PcRequestFile> _requestFiles = const [];
 
   @override
   void initState() {
@@ -298,6 +299,41 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _loadRequestFiles() async {
+    await _run('Loading PC files', () async {
+      if (_deviceToken.isEmpty) throw Exception('Register device first');
+      final result = await _getJson('/api/request-files', authorized: true);
+      if (result['ok'] != true) {
+        throw Exception(result['error'] ?? 'Failed');
+      }
+
+      final files = (result['files'] as List<dynamic>? ?? [])
+          .whereType<Map<String, dynamic>>()
+          .map(_PcRequestFile.fromJson)
+          .toList();
+      if (mounted) setState(() => _requestFiles = files);
+      return files.isEmpty
+          ? 'No PC files available'
+          : '${files.length} PC file(s)';
+    });
+  }
+
+  Future<void> _downloadRequestFile(_PcRequestFile file) async {
+    await _run('Requesting ${file.name}', () async {
+      if (_deviceToken.isEmpty) throw Exception('Register device first');
+      final uri = _uri(
+        '/api/request-files/download?filename=${Uri.encodeQueryComponent(file.name)}',
+      );
+      await _prefs.invokeMethod('downloadToDownloads', {
+        'url': uri.toString(),
+        'filename': file.name,
+        'deviceId': _deviceId,
+        'deviceToken': _deviceToken,
+      });
+      return 'Download started: ${file.name}';
+    });
+  }
+
   Future<void> _pickAndSendFile() async {
     await _saveConfig(showStatus: false);
     await _prefs.invokeMethod('pickAndSendFile');
@@ -346,10 +382,17 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<Map<String, dynamic>> _getJson(String path) async {
+  Future<Map<String, dynamic>> _getJson(
+    String path, {
+    bool authorized = false,
+  }) async {
     final uri = _uri(path);
     final client = HttpClient();
     final request = await client.getUrl(uri);
+    if (authorized) {
+      request.headers.add('X-Device-Id', _deviceId);
+      request.headers.add('X-Device-Token', _deviceToken);
+    }
     final response = await request.close();
     return _readJson(response);
   }
@@ -456,6 +499,33 @@ class _HomeScreenState extends State<HomeScreen> {
                   label: const Text('Open Chrome'),
                 ),
               ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        _SectionCard(
+          title: 'Request File from PC',
+          child: Column(
+            children: [
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _busy ? null : _loadRequestFiles,
+                  icon: const Icon(Icons.refresh),
+                  label: const Text('Refresh PC Files'),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (_requestFiles.isEmpty)
+                const _EmptyLine(text: 'No files loaded')
+              else
+                ..._requestFiles.map(
+                  (file) => _PcFileTile(
+                    file: file,
+                    busy: _busy,
+                    onDownload: () => _downloadRequestFile(file),
+                  ),
+                ),
             ],
           ),
         ),
@@ -656,6 +726,111 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
   }
+}
+
+class _PcRequestFile {
+  const _PcRequestFile({
+    required this.name,
+    required this.bytes,
+  });
+
+  final String name;
+  final int bytes;
+
+  factory _PcRequestFile.fromJson(Map<String, dynamic> json) {
+    return _PcRequestFile(
+      name: json['name']?.toString() ?? 'file',
+      bytes: json['bytes'] is int ? json['bytes'] as int : 0,
+    );
+  }
+}
+
+class _PcFileTile extends StatelessWidget {
+  const _PcFileTile({
+    required this.file,
+    required this.busy,
+    required this.onDownload,
+  });
+
+  final _PcRequestFile file;
+  final bool busy;
+  final VoidCallback onDownload;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFF0D1117),
+        border: Border.all(color: const Color(0xFF30363D)),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.insert_drive_file, color: Color(0xFF2DD4BF)),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  file.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w800),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  _formatBytes(file.bytes),
+                  style: const TextStyle(
+                    color: Color(0xFF8B949E),
+                    fontWeight: FontWeight.w700,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            tooltip: 'Download',
+            onPressed: busy ? null : onDownload,
+            icon: const Icon(Icons.download),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyLine extends StatelessWidget {
+  const _EmptyLine({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Text(
+        text,
+        style: const TextStyle(
+          color: Color(0xFF8B949E),
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+}
+
+String _formatBytes(int bytes) {
+  if (bytes < 1024) return '$bytes B';
+  final kb = bytes / 1024;
+  if (kb < 1024) return '${kb.toStringAsFixed(1)} KB';
+  final mb = kb / 1024;
+  if (mb < 1024) return '${mb.toStringAsFixed(1)} MB';
+  final gb = mb / 1024;
+  return '${gb.toStringAsFixed(1)} GB';
 }
 
 class _HeroPanel extends StatelessWidget {
