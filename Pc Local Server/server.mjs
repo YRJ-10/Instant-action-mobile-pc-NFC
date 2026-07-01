@@ -146,6 +146,50 @@ function run(command, args, options = {}) {
   });
 }
 
+async function lockPc() {
+  if (platform() !== "win32") {
+    throw new Error("Lock PC is only implemented for Windows right now.");
+  }
+
+  await run("rundll32.exe", ["user32.dll,LockWorkStation"], { windowsHide: true });
+}
+
+async function sleepPc() {
+  if (platform() !== "win32") {
+    throw new Error("Sleep PC is only implemented for Windows right now.");
+  }
+
+  await run(
+    "powershell",
+    [
+      "-NoProfile",
+      "-Command",
+      "Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState('Suspend', $false, $false)"
+    ],
+    { windowsHide: true }
+  );
+}
+
+async function openChrome() {
+  if (platform() !== "win32") {
+    throw new Error("Open Chrome is only implemented for Windows right now.");
+  }
+
+  const candidates = [
+    join(process.env.PROGRAMFILES ?? "", "Google", "Chrome", "Application", "chrome.exe"),
+    join(process.env["PROGRAMFILES(X86)"] ?? "", "Google", "Chrome", "Application", "chrome.exe"),
+    join(process.env.LOCALAPPDATA ?? "", "Google", "Chrome", "Application", "chrome.exe")
+  ];
+  const chromePath = candidates.find((candidate) => candidate && existsSync(candidate));
+
+  if (chromePath) {
+    await run(chromePath, [], { windowsHide: true });
+    return;
+  }
+
+  await run("cmd", ["/c", "start", "", "chrome"], { windowsHide: true });
+}
+
 async function setClipboard(text) {
   if (platform() !== "win32") {
     throw new Error("Clipboard write is only implemented for Windows right now.");
@@ -175,6 +219,23 @@ export async function openTarget(target) {
 }
 
 async function runAllowedCommand(commandId) {
+  if (commandId === "lock_pc") {
+    await lockPc();
+    return { command_id: commandId, result: "locked" };
+  }
+
+  if (commandId === "sleep_pc") {
+    setTimeout(() => {
+      sleepPc().catch((error) => logEvent("command_error", { action: commandId, error: error.message }));
+    }, 600);
+    return { command_id: commandId, result: "sleep_requested" };
+  }
+
+  if (commandId === "open_chrome") {
+    await openChrome();
+    return { command_id: commandId, result: "opened" };
+  }
+
   const command = config.allowed_commands?.[commandId];
   if (!command) {
     throw new Error(`Command is not allowed: ${commandId}`);
@@ -325,7 +386,9 @@ async function handleRequest(req, res) {
       const body = await readBody(req);
       const intent = JSON.parse(body.toString("utf8"));
       const result = await handleIntent(intent);
-      logEvent("intent", { action: result.action ?? intent.type });
+      logEvent("intent", {
+        action: result.command_id ?? result.action ?? intent.type
+      });
       sendJson(res, 200, { ok: true, result });
     } catch (error) {
       sendJson(res, 400, { ok: false, error: error.message });

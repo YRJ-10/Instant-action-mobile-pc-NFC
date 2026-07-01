@@ -298,6 +298,14 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<void> _sendCommand(String commandId) async {
+    await _sendIntent({
+      'type': 'command',
+      'source': 'manual',
+      'payload': {'command_id': commandId},
+    });
+  }
+
   Future<void> _pickAndSendFile() async {
     await _saveConfig(showStatus: false);
     await _prefs.invokeMethod('pickAndSendFile');
@@ -438,6 +446,42 @@ class _HomeScreenState extends State<HomeScreen> {
           connected: _hasPc,
           status: _status,
           onRun: _pickAndSendFile,
+        ),
+        const SizedBox(height: 16),
+        _SectionCard(
+          title: 'PC Commands',
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: _busy ? null : () => _sendCommand('lock_pc'),
+                      icon: const Icon(Icons.lock),
+                      label: const Text('Lock PC'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      onPressed: _busy ? null : () => _sendCommand('sleep_pc'),
+                      icon: const Icon(Icons.bedtime),
+                      label: const Text('Sleep PC'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _busy ? null : () => _sendCommand('open_chrome'),
+                  icon: const Icon(Icons.web),
+                  label: const Text('Open Chrome'),
+                ),
+              ),
+            ],
+          ),
         ),
         const SizedBox(height: 16),
         _SectionCard(
