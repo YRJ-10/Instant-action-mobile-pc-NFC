@@ -224,7 +224,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await Future.delayed(const Duration(milliseconds: 500));
     if (!mounted) return;
     setState(() => _tabIndex = 0);
-    await _simulateTap();
+    await _runQuickAction();
   }
 
   Future<void> _saveConfig({bool showStatus = true}) async {
@@ -430,23 +430,6 @@ class _HomeScreenState extends State<HomeScreen> {
       default:
         await _pickAndSendFile();
     }
-  }
-
-  Future<void> _simulateTap() async {
-    final text = _textController.text.trim();
-    final url = _urlController.text.trim();
-
-    if (url.startsWith('http://') || url.startsWith('https://')) {
-      await _sendUrl();
-      return;
-    }
-
-    if (text.isNotEmpty) {
-      await _sendClipboard();
-      return;
-    }
-
-    setState(() => _status = 'No context. Show menu later.');
   }
 
   Future<void> _sendIntent(Map<String, Object?> intent) async {

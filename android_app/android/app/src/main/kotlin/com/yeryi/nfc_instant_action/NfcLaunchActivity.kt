@@ -1,6 +1,7 @@
 package com.yeryi.nfc_instant_action
 
 import android.app.Activity
+import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
@@ -25,17 +26,10 @@ class NfcLaunchActivity : Activity() {
     private lateinit var messageView: TextView
     private lateinit var progressView: ProgressBar
     private var started = false
-    private var pendingLink = DEFAULT_DEEP_LINK
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         showLaunchScreen()
-
-        pendingLink = intent?.dataString ?: DEFAULT_DEEP_LINK
-        getSharedPreferences(PREF_NAME, MODE_PRIVATE)
-            .edit()
-            .putString(PREF_PENDING_DEEP_LINK, pendingLink)
-            .apply()
     }
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
@@ -48,8 +42,20 @@ class NfcLaunchActivity : Activity() {
         started = true
 
         mainHandler.postDelayed({
-            openFilePicker()
+            runSelectedAction()
         }, 250)
+    }
+
+    private fun runSelectedAction() {
+        when (quickAction()) {
+            QUICK_SEND_FILE -> openFilePicker()
+            QUICK_PULL_CLIPBOARD -> processQuickAction("Pulling clipboard") { pullPcClipboard() }
+            QUICK_OPEN_CHROME -> processQuickAction("Opening Chrome") { sendCommand("open_chrome") }
+            QUICK_LOCK_PC -> processQuickAction("Locking PC") { sendCommand("lock_pc") }
+            QUICK_SLEEP_PC -> processQuickAction("Sleeping PC") { sendCommand("sleep_pc") }
+            QUICK_REQUEST_FILES -> openMainAppForAction()
+            else -> openFilePicker()
+        }
     }
 
     private fun openFilePicker() {
@@ -109,16 +115,27 @@ class NfcLaunchActivity : Activity() {
         }.start()
     }
 
-    private fun processTap(contextText: String) {
+    private fun processQuickAction(title: String, action: () -> TapResult) {
+        updateStatus(title, "Sending action to PC.", true)
         Thread {
-            val result = runCatching { handleTap(contextText) }
-                .getOrElse { TapResult("Tap failed", it.message ?: "Unknown error", false) }
+            val result = runCatching { action() }
+                .getOrElse { TapResult("Action failed", it.message ?: "Unknown error", false) }
 
             mainHandler.post {
-                updateStatus(result.title, result.message, result.loading)
-                finishAfterDelay(if (result.loading) 900 else 1800)
+                updateStatus(result.title, result.message, false)
+                finishAfterDelay(1400)
             }
         }.start()
+    }
+
+    private fun openMainAppForAction() {
+        updateStatus("Opening app", "Loading selected action.", true)
+        val intent = Intent(this, MainActivity::class.java).apply {
+            putExtra(EXTRA_DEEP_LINK, "$DEFAULT_DEEP_LINK?action=request_files")
+            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        startActivity(intent)
+        finishAfterDelay(300)
     }
 
     private fun showLaunchScreen() {
@@ -159,62 +176,51 @@ class NfcLaunchActivity : Activity() {
         progressView.visibility = if (loading) android.view.View.VISIBLE else android.view.View.GONE
     }
 
-    private fun handleTap(contextText: String): TapResult {
+    private fun quickAction(): String {
+        return getSharedPreferences(PREF_NAME, MODE_PRIVATE)
+            .getString("quickAction", QUICK_SEND_FILE)
+            .orEmpty()
+    }
+
+    private fun connectionConfig(): ConnectionConfig {
         val prefs = getSharedPreferences(PREF_NAME, MODE_PRIVATE)
         val baseUrl = prefs.getString("baseUrl", "")?.trim().orEmpty().trimEnd('/')
         val deviceId = prefs.getString("deviceId", "")?.trim().orEmpty()
         val deviceToken = prefs.getString("deviceToken", "")?.trim().orEmpty()
 
         if (baseUrl.isEmpty() || deviceId.isEmpty() || deviceToken.isEmpty()) {
-            return TapResult("Not connected", "Open the app and trust this phone first.", false)
+            throw IllegalStateException("Open the app and trust this phone first.")
         }
 
-        val type = if (contextText.startsWith("http://") || contextText.startsWith("https://")) {
-            "url"
-        } else {
-            "clipboard"
-        }
+        return ConnectionConfig(baseUrl, deviceId, deviceToken)
+    }
 
-        val payload = JSONObject()
-        if (type == "url") {
-            payload.put("url", contextText)
-        } else {
-            payload.put("text", contextText)
-        }
-
+    private fun sendCommand(commandId: String): TapResult {
+        val config = connectionConfig()
         val body = JSONObject()
-            .put("type", type)
+            .put("type", "command")
             .put("source", "nfc")
-            .put("payload", payload)
+            .put("payload", JSONObject().put("command_id", commandId))
 
-        postIntent(baseUrl, deviceId, deviceToken, body)
-        getSharedPreferences(PREF_NAME, MODE_PRIVATE)
-            .edit()
-            .putString(PREF_LAST_SENT_CLIPBOARD, contextText)
-            .apply()
-        return TapResult("Sent", if (type == "url") "URL sent to PC." else "Clipboard sent to PC.", false)
+        postIntent(config.baseUrl, config.deviceId, config.deviceToken, body)
+
+        return when (commandId) {
+            "lock_pc" -> TapResult("PC locked", "Lock command sent.", false)
+            "sleep_pc" -> TapResult("Sleep requested", "Sleep command sent.", false)
+            "open_chrome" -> TapResult("Chrome opened", "Open Chrome command sent.", false)
+            else -> TapResult("Command sent", commandId, false)
+        }
     }
 
-    private fun lastSentClipboard(): String {
-        return getSharedPreferences(PREF_NAME, MODE_PRIVATE)
-            .getString(PREF_LAST_SENT_CLIPBOARD, "")
-            .orEmpty()
-    }
-
-    private fun shouldOpenFilePicker(contextText: String): Boolean {
-        if (contextText.isEmpty() || contextText == lastSentClipboard()) return true
-
-        val prefs = getSharedPreferences(PREF_NAME, MODE_PRIVATE)
-        val setupValues = listOf(
-            prefs.getString("pairingToken", ""),
-            prefs.getString("deviceId", ""),
-            prefs.getString("deviceToken", ""),
-            prefs.getString("pcId", ""),
-            prefs.getString("baseUrl", ""),
-        )
-
-        return setupValues.any { value ->
-            !value.isNullOrBlank() && value.trim() == contextText
+    private fun pullPcClipboard(): TapResult {
+        val config = connectionConfig()
+        val text = getClipboardFromPc(config.baseUrl, config.deviceId, config.deviceToken)
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("PC Clipboard", text))
+        return if (text.isEmpty()) {
+            TapResult("Clipboard empty", "PC clipboard is empty.", false)
+        } else {
+            TapResult("Clipboard copied", "PC clipboard copied to phone.", false)
         }
     }
 
@@ -269,6 +275,28 @@ class NfcLaunchActivity : Activity() {
         }
     }
 
+    private fun getClipboardFromPc(baseUrl: String, deviceId: String, deviceToken: String): String {
+        val connection = URL("$baseUrl/api/clipboard").openConnection() as HttpURLConnection
+        connection.requestMethod = "GET"
+        connection.connectTimeout = 3000
+        connection.readTimeout = 5000
+        connection.setRequestProperty("X-Device-Id", deviceId)
+        connection.setRequestProperty("X-Device-Token", deviceToken)
+
+        val responseCode = connection.responseCode
+        val responseStream = if (responseCode in 200..299) connection.inputStream else connection.errorStream
+        val responseText = responseStream?.bufferedReader()?.use { it.readText() }.orEmpty()
+        if (responseCode !in 200..299) {
+            throw IllegalStateException("HTTP $responseCode")
+        }
+
+        val response = JSONObject(responseText)
+        if (!response.optBoolean("ok", false)) {
+            throw IllegalStateException(response.optString("error", "Request failed"))
+        }
+        return response.optString("text", "")
+    }
+
     private fun fileName(uri: Uri): String {
         contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
             if (cursor.moveToFirst()) {
@@ -309,16 +337,15 @@ class NfcLaunchActivity : Activity() {
         }
     }
 
-    private fun readClipboardText(): String {
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = clipboard.primaryClip ?: return ""
-        if (clip.itemCount == 0) return ""
-        return clip.getItemAt(0).coerceToText(this)?.toString()?.trim().orEmpty()
-    }
-
     private fun finishAfterDelay(delayMs: Long) {
         mainHandler.postDelayed({ finish() }, delayMs)
     }
+
+    private data class ConnectionConfig(
+        val baseUrl: String,
+        val deviceId: String,
+        val deviceToken: String,
+    )
 
     private data class TapResult(
         val title: String,
@@ -329,9 +356,14 @@ class NfcLaunchActivity : Activity() {
     companion object {
         const val EXTRA_DEEP_LINK = "instant_action_deep_link"
         const val PREF_PENDING_DEEP_LINK = "pendingDeepLink"
-        private const val PREF_LAST_SENT_CLIPBOARD = "lastSentClipboard"
         private const val REQUEST_PICK_FILES = 7291
         private const val PREF_NAME = "instant_action"
         private const val DEFAULT_DEEP_LINK = "nfcinstant://tap"
+        private const val QUICK_SEND_FILE = "send_file"
+        private const val QUICK_PULL_CLIPBOARD = "pull_clipboard"
+        private const val QUICK_REQUEST_FILES = "request_files"
+        private const val QUICK_OPEN_CHROME = "open_chrome"
+        private const val QUICK_LOCK_PC = "lock_pc"
+        private const val QUICK_SLEEP_PC = "sleep_pc"
     }
 }
