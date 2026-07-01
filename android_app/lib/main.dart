@@ -95,6 +95,51 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+class _QuickActionOption {
+  const _QuickActionOption({
+    required this.id,
+    required this.label,
+    required this.icon,
+  });
+
+  final String id;
+  final String label;
+  final IconData icon;
+}
+
+const _quickActionOptions = [
+  _QuickActionOption(
+    id: 'send_file',
+    label: 'Pick & Send File',
+    icon: Icons.attach_file,
+  ),
+  _QuickActionOption(
+    id: 'pull_clipboard',
+    label: 'Pull PC Clipboard',
+    icon: Icons.download_for_offline,
+  ),
+  _QuickActionOption(
+    id: 'request_files',
+    label: 'Refresh PC Files',
+    icon: Icons.refresh,
+  ),
+  _QuickActionOption(
+    id: 'open_chrome',
+    label: 'Open Chrome',
+    icon: Icons.web,
+  ),
+  _QuickActionOption(
+    id: 'lock_pc',
+    label: 'Lock PC',
+    icon: Icons.lock,
+  ),
+  _QuickActionOption(
+    id: 'sleep_pc',
+    label: 'Sleep PC',
+    icon: Icons.bedtime,
+  ),
+];
+
 class _HomeScreenState extends State<HomeScreen> {
   static const _prefs = MethodChannel('instant_action/preferences');
   static const _appName = 'NFC Instant Action PC Server';
@@ -112,6 +157,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String _deviceToken = '';
   String _pcId = '';
   String _deviceName = 'Android device';
+  String _quickAction = 'send_file';
   List<_PcRequestFile> _requestFiles = const [];
 
   @override
@@ -143,6 +189,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _deviceName = config['deviceName']?.isNotEmpty == true
         ? config['deviceName']!
         : 'Android device';
+    _quickAction = _validQuickAction(config['quickAction']);
 
     if ((config['baseUrl'] ?? '').isNotEmpty) {
       _baseUrlController.text = config['baseUrl']!;
@@ -188,8 +235,18 @@ class _HomeScreenState extends State<HomeScreen> {
       'deviceId': _deviceId,
       'deviceToken': _deviceToken,
       'pcId': _pcId,
+      'quickAction': _quickAction,
     });
     if (showStatus && mounted) setState(() => _status = 'Config saved');
+  }
+
+  Future<void> _setQuickAction(String? value) async {
+    final next = _validQuickAction(value);
+    setState(() {
+      _quickAction = next;
+      _status = 'Quick action: ${_quickActionOption.label}';
+    });
+    await _saveConfig(showStatus: false);
   }
 
   Future<void> _testHealth() async {
@@ -357,6 +414,24 @@ class _HomeScreenState extends State<HomeScreen> {
     if (mounted) setState(() => _status = 'Choose file to send');
   }
 
+  Future<void> _runQuickAction() async {
+    switch (_quickAction) {
+      case 'pull_clipboard':
+        await _pullPcClipboard();
+      case 'open_chrome':
+        await _sendCommand('open_chrome');
+      case 'lock_pc':
+        await _sendCommand('lock_pc');
+      case 'sleep_pc':
+        await _sendCommand('sleep_pc');
+      case 'request_files':
+        await _loadRequestFiles();
+      case 'send_file':
+      default:
+        await _pickAndSendFile();
+    }
+  }
+
   Future<void> _simulateTap() async {
     final text = _textController.text.trim();
     final url = _urlController.text.trim();
@@ -464,6 +539,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool get _hasPc => _pcId.isNotEmpty;
 
+  _QuickActionOption get _quickActionOption {
+    return _quickActionOptions.firstWhere(
+      (option) => option.id == _quickAction,
+      orElse: () => _quickActionOptions.first,
+    );
+  }
+
+  String _validQuickAction(String? value) {
+    final candidate = value?.trim();
+    if (_quickActionOptions.any((option) => option.id == candidate)) {
+      return candidate!;
+    }
+    return 'send_file';
+  }
+
   Widget _buildTab() {
     return switch (_tabIndex) {
       0 => _buildActionTab(),
@@ -481,7 +571,29 @@ class _HomeScreenState extends State<HomeScreen> {
           trusted: _isTrusted,
           connected: _hasPc,
           status: _status,
-          onRun: _pickAndSendFile,
+          actionLabel: _quickActionOption.label,
+          actionIcon: _quickActionOption.icon,
+          onRun: _runQuickAction,
+        ),
+        const SizedBox(height: 16),
+        _SectionCard(
+          title: 'Quick Action',
+          child: DropdownButtonFormField<String>(
+            initialValue: _quickAction,
+            decoration: const InputDecoration(
+              labelText: 'Main Button',
+              prefixIcon: Icon(Icons.bolt),
+            ),
+            items: _quickActionOptions
+                .map(
+                  (option) => DropdownMenuItem(
+                    value: option.id,
+                    child: Text(option.label),
+                  ),
+                )
+                .toList(),
+            onChanged: _busy ? null : _setQuickAction,
+          ),
         ),
         const SizedBox(height: 16),
         _SectionCard(
@@ -865,6 +977,8 @@ class _HeroPanel extends StatelessWidget {
     required this.trusted,
     required this.connected,
     required this.status,
+    required this.actionLabel,
+    required this.actionIcon,
     required this.onRun,
   });
 
@@ -872,6 +986,8 @@ class _HeroPanel extends StatelessWidget {
   final bool trusted;
   final bool connected;
   final String status;
+  final String actionLabel;
+  final IconData actionIcon;
   final VoidCallback onRun;
 
   @override
@@ -939,8 +1055,8 @@ class _HeroPanel extends StatelessWidget {
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : const Icon(Icons.attach_file),
-              label: const Text('Pick & Send File'),
+                  : Icon(actionIcon),
+              label: Text(actionLabel),
             ),
           ),
         ],

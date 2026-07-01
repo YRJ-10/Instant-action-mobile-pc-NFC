@@ -434,7 +434,11 @@ async function handleRequest(req, res) {
     return;
   }
 
-  if (req.method === "GET" && (route.startsWith("/api/request-files") || route === "/api/clipboard") && !isAuthorized(req)) {
+  if (
+    req.method === "GET" &&
+    (route.startsWith("/api/request-files") || route === "/api/clipboard") &&
+    !isAuthorized(req)
+  ) {
     logEvent("unauthorized", { route });
     sendJson(res, 401, { ok: false, error: "Unauthorized" });
     return;

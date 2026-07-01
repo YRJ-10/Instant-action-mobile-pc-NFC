@@ -42,6 +42,7 @@ class MainActivity : FlutterActivity() {
                             "deviceId" to prefs.getString("deviceId", ""),
                             "deviceToken" to prefs.getString("deviceToken", ""),
                             "pcId" to prefs.getString("pcId", ""),
+                            "quickAction" to prefs.getString("quickAction", "send_file"),
                             "deviceName" to readableDeviceName()
                         )
                     )
@@ -54,6 +55,7 @@ class MainActivity : FlutterActivity() {
                         .putString("deviceId", args["deviceId"] as? String ?: "")
                         .putString("deviceToken", args["deviceToken"] as? String ?: "")
                         .putString("pcId", args["pcId"] as? String ?: "")
+                        .putString("quickAction", args["quickAction"] as? String ?: "send_file")
                         .apply()
                     result.success(true)
                 }
